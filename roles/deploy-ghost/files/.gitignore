@@ -1,0 +1,3 @@
+deployment.yaml
+mysql-pvc.yml
+deployment_service.yaml

@@ -1,0 +1,8 @@
+---
+# Playbook to create GKE cluster
+
+- name: Stress Test
+  hosts: localhost
+  gather_facts: false
+  roles:
+      - jmeter

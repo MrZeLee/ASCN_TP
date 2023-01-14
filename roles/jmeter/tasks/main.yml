@@ -1,0 +1,28 @@
+- name: Delete content & directory
+  file:
+    state: absent
+    path: roles/jmeter/files/results/Stress test frontend.jmx
+
+- name: Delete jmeter cpu_limit_ghost
+  file:
+    state: absent
+    path: roles/jmeter/files/jmeter.log
+
+- name: Get external IP
+  shell: kubectl get services ghost --output jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  register: ghost_ip
+  until: ghost_ip.stdout != ""
+  retries: 10
+  delay: 10
+
+- name: Update ghost_ip
+  set_fact:
+    ghost_ip: "{{ ghost_ip.stdout }}"
+
+- name: template jmeter
+  template:
+    src: "roles/jmeter/templates/Stress test frontend.jmx.tpl"
+    dest: "roles/jmeter/files/Stress test frontend.jmx"
+
+- name: run jmeter
+  shell: "cd roles/jmeter/files; jmeter -n -t \"Stress test frontend.jmx\""

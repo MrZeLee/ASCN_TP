@@ -1,0 +1,16 @@
+# - name: check for kubectl
+#   stat:
+#     path: /usr/local/bin/kubectl
+#   register: kubectl
+
+- name: copy kubernetes secrets
+  template:
+    src: secrets.yaml.tpl
+    dest: roles/kube-secrets/files/secrets.yaml
+    mode: 0600
+  register: k8s_secrets
+  # when: kubectl.stat.exists
+
+- name: apply secrets
+  command: kubectl apply -f roles/kube-secrets/files/secrets.yaml
+  ignore_errors: yes

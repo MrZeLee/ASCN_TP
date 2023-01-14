@@ -1,0 +1,96 @@
+---
+
+- name: template to deployment
+  template:
+    src: roles/deploy-ghost/templates/deployment_service.yaml.tpl
+    dest: roles/deploy-ghost/files/deployment_service.yaml
+
+- name: Apply service to Kubernetes
+  shell: kubectl apply -f roles/deploy-ghost/files/deployment_service.yaml
+
+- name: Set default kubectl default namespace
+  shell: kubectl config set-context --current --namespace={{ namespace }}
+
+- name: Get external IP
+  shell: kubectl get services ghost --output jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  register: ghost_ip
+  until: ghost_ip.stdout != ""
+  retries: 10
+  delay: 10
+
+- name: Update ghost_ip
+  set_fact:
+    ghost_ip: "{{ ghost_ip.stdout }}"
+
+- name: template to deployment
+  template:
+    src: roles/deploy-ghost/templates/mysql-pvc.yml.tpl
+    dest: roles/deploy-ghost/files/mysql-pvc.yml
+
+- name: Apply pvc
+  shell: kubectl apply -f roles/deploy-ghost/files/mysql-pvc.yml
+
+- name: template to deployment
+  template:
+    src: deployment.yaml.tpl
+    dest: roles/deploy-ghost/files/deployment.yaml
+
+- name: Apply deployment to Kubernetes
+  shell: kubectl apply -f roles/deploy-ghost/files/deployment.yaml
+
+- name: Check db ready
+  shell: kubectl get deployment -l app=db --no-headers | awk '{print $2}' | sed 's/\/.*//g'
+  register: pod
+  until: pod.stdout | int > 0
+  retries: 30
+  delay: 10
+
+- name: Check ghost ready
+  shell: kubectl get deployment -l app=ghost --no-headers | awk '{print $2}' | sed 's/\/.*//g'
+  register: pod
+  until: pod.stdout | int > 0
+  retries: 30
+  delay: 10
+
+- name: Get pod
+  shell: kubectl get pod -l app=db --no-headers | awk '{print $1}' | head
+  register: pod
+
+- name: import bcrypt
+  shell: "{{ python_path }} -m pip install bcrypt"
+
+- name: Set password
+  shell: "{{ python_path }} -c 'import bcrypt; print(bcrypt.hashpw(b\"{{ admin_password }}\", bcrypt.gensalt(rounds=10)).decode(\"ascii\").replace(\"$\",\"\\$\"))'"
+  register: admin_password_hash
+
+- name: Check that ghost already populated db
+  shell: "kubectl exec {{ pod.stdout }} -- mysql --user=root --database={{ secrets[0].data.db_name }} --password={{ secrets[0].data.db_password }}  --execute=\"select status from users where id=1;\""
+  register: check
+  until: check.stdout != ""
+  retries: 10
+  delay: 10
+
+- name: Add admin in mysql
+  shell: "kubectl exec {{ pod.stdout }} -- mysql --user=root --database={{ secrets[0].data.db_name }} --password={{ secrets[0].data.db_password }}  --execute=\"update users set name='{{ admin_user }}', password='{{ admin_password_hash.stdout }}', email='{{ admin_email }}', status='active' where id=1;\""
+  retries: 10
+  delay: 5
+
+- name: Add mailgun_domain, mailgun_api_key, mailgun_base_url, editor_default_email_recipients
+  shell: "kubectl exec {{ pod.stdout }} -- mysql --user=root --database={{ secrets[0].data.db_name }} --password={{ secrets[0].data.db_password }}  --execute=\"update settings set value='{{ mailgun_domain }}' where \\`key\\`='mailgun_domain';update settings set value='{{ mailgun_api_key }}' where \\`key\\`='mailgun_api_key';update settings set value='{{ mailgun_base_url }}' where \\`key\\`='mailgun_base_url';update settings set value='filter' where \\`key\\`='editor_default_email_recipients';\""
+
+# - name: Add mailgun_api_key
+#   shell: "kubectl exec {{ pod.stdout }} -- mysql --user=root --database={{ secrets[0].data.db_name }} --password={{ secrets[0].data.db_password }}  --execute=\"update settings set value='{{ mailgun_api_key }}' where \\`key\\`='mailgun_api_key';\""
+
+# - name: Add mailgun_base_url
+#   shell: "kubectl exec {{ pod.stdout }} -- mysql --user=root --database={{ secrets[0].data.db_name }} --password={{ secrets[0].data.db_password }}  --execute=\"update settings set value='{{ mailgun_base_url }}' where \\`key\\`='mailgun_base_url';\""
+
+# - name: Add editor_default_email_recipients
+#   shell: "kubectl exec {{ pod.stdout }} -- mysql --user=root --database={{ secrets[0].data.db_name }} --password={{ secrets[0].data.db_password }}  --execute=\"update settings set value='filter' where \\`key\\`='editor_default_email_recipients';\""
+
+- name: Shutdown pod and wait for another
+  shell: "kubectl delete pods -l app=ghost"
+
+- name: External ip
+  debug:
+    msg: "http://{{ ghost_ip }}/ghost"
+    

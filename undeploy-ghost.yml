@@ -1,0 +1,10 @@
+---
+# Playbook to undeploy Ghost and its component
+# TO DO
+
+- name: Undeploy ghost
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - undeploy-ghost
+    - {role: undeploy-pv, when: delete_data is defined and delete_data == 'true'}

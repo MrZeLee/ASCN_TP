@@ -1,0 +1,13 @@
+---
+
+- name: Setup secrets
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - kube-secrets
+
+- name: Deploy ghost
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - deploy-ghost

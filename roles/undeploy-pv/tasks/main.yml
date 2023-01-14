@@ -1,0 +1,7 @@
+---
+
+- name: Undeploy pvc
+  shell: kubectl delete -f roles/deploy-ghost/files/mysql-pvc.yml
+
+- name: Undeploy pv
+  shell: kubectl delete pv $(kubectl get pv | grep pvc | awk '{print $1}')

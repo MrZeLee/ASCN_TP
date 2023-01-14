@@ -1,0 +1,59 @@
+- name: Delete content & directory
+  file:
+    state: absent
+    path: roles/monitoring/files/google_cloud_ops_agent_provisioning/
+
+- name: Delete content & directory
+  file:
+    state: absent
+    path: roles/monitoring/files/mass-provision-google-cloud-ops-agents.py
+
+- name: Delete content & directory
+  file:
+    state: absent
+    path: roles/monitoring/files/agents_to_install.csv
+
+- name: Get Nodes
+  shell: kubectl get nodes -o jsonpath='{.items[*].metadata.name}'
+  register: nodes
+
+- name: get mass-provision-google-cloud-ops-agents.py
+  shell: curl -sS https://dl.google.com/cloudagents/mass-provision-google-cloud-ops-agents.py --output roles/monitoring/files/mass-provision-google-cloud-ops-agents.py
+
+- name: Create agents
+  shell: |
+    echo '"projects/{{ gcp_project }}/zones/{{ gcp_zone }}/instances/{{ item }}","[{""type"":""ops-agent""}]"' > roles/monitoring/files/agents_to_install.csv;
+    cd roles/monitoring/files/ && python3 mass-provision-google-cloud-ops-agents.py --file agents_to_install.csv
+  with_items: "{{ nodes.stdout | split(' ') }}"
+
+- name: Set project
+  shell: gcloud config set project "{{ gcp_project }}"
+
+- name: Add alpha componentes
+  shell: gcloud components install alpha -q
+
+- name: get templates policy
+  ansible.builtin.find:
+    paths: roles/monitoring/templates/policy
+  register: files_policy
+
+- name: get templates dashboard
+  ansible.builtin.find:
+    paths: roles/monitoring/templates/dashboard
+  register: files_dashboard
+
+- name: change files
+  template:
+    src: "{{ item.path }}"
+    dest: "{{ item.path[:-4] | replace('templates','files') }}"
+  with_items: "{{files_policy.files + files_dashboard.files}}"
+
+- name: run policies
+  shell: "gcloud alpha monitoring policies create --policy-from-file=\"{{ item.path[:-4] | replace('templates','files') }}\""
+  with_items: "{{files_policy.files}}"
+  ignore_errors: true
+
+- name: run dashboards
+  shell: "gcloud monitoring dashboards create --config-from-file=\"{{ item.path[:-4] | replace('templates','files') }}\""
+  with_items: "{{files_dashboard.files}}"
+  ignore_errors: true

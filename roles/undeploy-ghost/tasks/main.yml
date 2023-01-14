@@ -1,0 +1,27 @@
+- name: undeploy deployment to Kubernetes
+  shell: kubectl delete -f roles/deploy-ghost/files/deployment.yaml
+  register: buff
+
+- name: undeploy service to Kubernetes
+  shell: kubectl delete -f roles/deploy-ghost/files/deployment_service.yaml
+
+- name: undeploy secrets
+  shell: kubectl delete -f roles/kube-secrets/files/secrets.yaml
+
+- name: get policies
+  shell: gcloud alpha monitoring policies list --uri -q
+  register: policies
+
+- name: undeploy policies
+  shell: "gcloud alpha monitoring policies delete {{item}} -q "
+  with_items: "{{ policies.stdout_lines }}"
+  ignore_errors: true
+
+- name: get dashboards
+  shell: gcloud monitoring dashboards list --uri -q
+  register: dashboard
+
+- name: undeploy dashboard
+  shell: "gcloud monitoring dashboards delete {{item}} -q "
+  with_items: "{{ dashboard.stdout_lines }}"
+
